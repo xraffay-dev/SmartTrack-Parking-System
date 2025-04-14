@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SmartTrack Analytics</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        h1 { color: #333; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>📊 Parking Analytics</h1>
+
+    <p><strong>Total Logs:</strong> {{ total_logs }}</p>
+    <p><strong>Currently Parked Vehicles:</strong> {{ currently_parked }}</p>
+    <p><strong>Average Parking Duration:</strong> {{ avg_duration }}</p>
+
+    <h2>🚗 Top 5 Frequent Vehicles</h2>
+    <table>
+        <tr><th>License Plate</th><th>Visits</th></tr>
+        {% for vehicle in top_vehicles %}
+            <tr>
+                <td>{{ vehicle.vehicle__license_plate }}</td>
+                <td>{{ vehicle.count }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

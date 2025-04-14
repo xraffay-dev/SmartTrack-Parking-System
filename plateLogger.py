@@ -4,6 +4,12 @@ import easyocr
 import matplotlib.pyplot as plt
 import requests
 import argparse
+import re
+
+def clean_plate_text(plate_text):
+    # Replace any character that is not an alphabet, number, or hyphen with a hyphen
+    cleaned_text = re.sub(r'[^a-zA-Z0-9-]', '-', plate_text)
+    return cleaned_text
 
 # 📦 Load YOLO model
 model = YOLO("runs/detect/train3/weights/best.pt")
@@ -14,8 +20,7 @@ parser.add_argument('--mode', default='entry', choices=['entry', 'exit'])
 args = parser.parse_args()
 
 # 📷 Load image
-# image_path = "./plate_dataset/test/images/car469.jpg"
-image_path = "car0.jpg"
+image_path = "./plate_dataset/test/images/car1.jpg"
 
 image = cv2.imread(image_path)
 
@@ -37,9 +42,12 @@ for box in results[0].boxes.xyxy:
     if result:
         plate_text = result[0][1]  # First detected string
 
-    print("✅ Final Detected Plate:", plate_text)
+    cleaned_plate_text = clean_plate_text(plate_text)
+    
+    print("✅ Final Detected Plate:", cleaned_plate_text)
 
-    url = f"http://127.0.0.1:8000/parking/{args.mode}/?plate={plate_text}"
+    
+    url = f"http://127.0.0.1:8000/parking/{args.mode}/?plate={cleaned_plate_text}"
     
     # Send detected plate to your Django backend (as an entry)
     try:
