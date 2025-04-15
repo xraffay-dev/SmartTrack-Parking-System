@@ -3,6 +3,8 @@ from django.http import JsonResponse
 from .models import Vehicle, EntryExitLog
 from django.utils import timezone
 from django.db.models import Count, Avg, Q, DurationField, ExpressionWrapper, F
+from django.shortcuts import get_object_or_404
+from datetime import timedelta
 import datetime
 
 def format_duration(duration):
@@ -63,3 +65,40 @@ def analytics_view(request):
     }
 
     return render(request, 'parking/analytics.html', context)
+
+def vehicle_detail(request, plate):
+    vehicle = Vehicle.objects.get(license_plate=plate)
+    logs = EntryExitLog.objects.filter(vehicle=vehicle).order_by('entry_time')
+
+    total_visits = logs.count()
+    total_time = timedelta()
+    formated_total_time = format_duration(total_time)
+    currently_parked = False
+    days_visited = set()
+
+    log_data = []
+
+    for log in logs:
+        duration = None
+        if log.exit_time:
+            duration = log.exit_time - log.entry_time
+            total_time += duration
+        else:
+            currently_parked = True
+        days_visited.add(log.entry_time.date())
+        formated_duration = format_duration(duration)
+        log_data.append({
+            'entry_time': log.entry_time,
+            'exit_time': log.exit_time,
+            'duration': formated_duration,
+        })
+
+    context = {
+        'vehicle': vehicle,
+        'logs': log_data,
+        'total_visits': total_visits,
+        'total_time': str(format_duration(total_time)),
+        'days_visited': len(days_visited),
+        'currently_parked': currently_parked,
+    }
+    return render(request, 'parking/vehicle_detail.html', context)

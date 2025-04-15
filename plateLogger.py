@@ -20,7 +20,7 @@ parser.add_argument('--mode', default='entry', choices=['entry', 'exit'])
 args = parser.parse_args()
 
 # 📷 Load image
-image_path = "./plate_dataset/test/images/car1.jpg"
+image_path = "./plate_dataset/test/images/car2.jpg"
 
 image = cv2.imread(image_path)
 
