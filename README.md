@@ -1,4 +1,9 @@
 # 🚗 SmartTrack - Intelligent Parking and Vehicle Monitoring System
+![Python](https://img.shields.io/badge/Python-3.12-blue)
+![Django](https://img.shields.io/badge/Django-5.2-green)
+![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-orange)
+![License](https://img.shields.io/badge/License-MIT-yellow)
+![Status](https://img.shields.io/badge/Project-Active-brightgreen)
 
 Welcome to **SmartTrack** — an intelligent, automated parking management system built using **Django**, **YOLOv8**, **EasyOCR**, and **OpenCV**.
 
