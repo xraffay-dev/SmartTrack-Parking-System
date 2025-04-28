@@ -1,11 +1,23 @@
-from django.shortcuts import render
-from django.http import JsonResponse
-from .models import Vehicle, EntryExitLog
-from django.utils import timezone
-from django.db.models import Count, Avg, Q, DurationField, ExpressionWrapper, F
-from django.shortcuts import get_object_or_404
+import re
 from datetime import timedelta
-import datetime
+from django.utils import timezone
+from django.utils.timezone import now
+from django.http import JsonResponse
+from .models import Vehicle, EntryExitLog, ParkingLog
+from django.shortcuts import render, get_object_or_404
+from django.db.models import Count, Avg, DurationField, ExpressionWrapper, F
+
+
+def normalize_plate(plate):
+    # Remove all non-alphanumeric characters
+    cleaned = re.sub(r"[^A-Za-z0-9]", "", plate).upper()
+
+    # Split letters and digits
+    match = re.match(r"^([A-Z]+)(\d+)$", cleaned)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
+    return cleaned  # fallback if pattern doesn't match
+
 
 def format_duration(duration):
     if not duration:
@@ -15,31 +27,68 @@ def format_duration(duration):
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
 
-def log_entry(request):
-    license_plate = request.GET.get('plate')
-    if not license_plate:
-        return JsonResponse({'error': 'License plate required'}, status=400)
 
-    vehicle, _ = Vehicle.objects.get_or_create(license_plate=license_plate.upper())
+def log_plate(request):
+    plate = request.GET.get("plate")
+    mode = request.GET.get("mode", "entry")
 
-    EntryExitLog.objects.create(vehicle=vehicle)
-    return JsonResponse({'status': 'Entry logged', 'plate': license_plate})
+    if not plate:
+        return JsonResponse({"error": "Plate not provided"}, status=400)
 
-def log_exit(request):
-    license_plate = request.GET.get('plate')
-    if not license_plate:
-        return JsonResponse({'error': 'License plate required'}, status=400)
+    plate = normalize_plate(plate)
 
-    try:
-        vehicle = Vehicle.objects.get(license_plate=license_plate.upper())
-        log = EntryExitLog.objects.filter(vehicle=vehicle, exit_time__isnull=True).latest('entry_time')
-        log.exit_time = timezone.now()
-        log.save()
-        return JsonResponse({'status': 'Exit logged', 'duration': str(log.duration())})
-    except Vehicle.DoesNotExist:
-        return JsonResponse({'error': 'Vehicle not found'}, status=404)
-    except EntryExitLog.DoesNotExist:
-        return JsonResponse({'error': 'No active entry found for this vehicle'}, status=404)
+    if mode == "entry":
+        # --- Parking Log ---
+        open_logs = ParkingLog.objects.filter(plate=plate, exit_time__isnull=True)
+        if open_logs.exists():
+            # Reuse exit logic by changing mode to exit
+            request.GET = request.GET.copy()
+            request.GET["mode"] = "exit"
+            return log_plate(request)
+
+        ParkingLog.objects.create(plate=plate, entry_time=now())
+
+        # --- EntryExitLog ---
+        # Check if vehicle exists, otherwise create it
+        vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
+
+        EntryExitLog.objects.create(vehicle=vehicle, entry_time=now())
+
+        return JsonResponse({"message": "Entry logged", "plate": plate})
+
+    elif mode == "exit":
+        try:
+            # --- Parking Log ---
+            log = ParkingLog.objects.get(plate=plate, exit_time__isnull=True)
+            log.exit_time = now()
+            log.charge = log.calculate_charge()
+            log.save()
+
+            # --- EntryExitLog ---
+            # find open EntryExitLog and close it
+            vehicle = Vehicle.objects.get(license_plate=plate)
+            open_log = EntryExitLog.objects.filter(
+                vehicle=vehicle, exit_time__isnull=True
+            ).first()
+            if open_log:
+                open_log.exit_time = now()
+                open_log.save()
+
+            return JsonResponse(
+                {
+                    "message": "Exit logged",
+                    "plate": plate,
+                    "duration": str(log.exit_time - log.entry_time),
+                    "charge": log.charge,
+                }
+            )
+        except (ParkingLog.DoesNotExist, Vehicle.DoesNotExist):
+            return JsonResponse(
+                {"error": "No active entry found for this plate"}, status=404
+            )
+
+    return JsonResponse({"error": "Invalid mode"}, status=400)
+
 
 def analytics_view(request):
     total_logs = EntryExitLog.objects.count()
@@ -47,58 +96,71 @@ def analytics_view(request):
 
     # Parking duration (only logs with exits)
     durations = EntryExitLog.objects.exclude(exit_time__isnull=True).annotate(
-        duration=ExpressionWrapper(F('exit_time') - F('entry_time'), output_field=DurationField())
+        duration=ExpressionWrapper(
+            F("exit_time") - F("entry_time"), output_field=DurationField()
+        )
     )
-    avg_duration = durations.aggregate(avg=Avg('duration'))['avg']
+    avg_duration = durations.aggregate(avg=Avg("duration"))["avg"]
     avg_duration_readable = format_duration(avg_duration)
-    
+
     # Most frequent vehicles
-    top_vehicles = EntryExitLog.objects.values('vehicle__license_plate') \
-        .annotate(count=Count('id')) \
-        .order_by('-count')[:5]
+    top_vehicles = (
+        EntryExitLog.objects.values("vehicle__license_plate")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
 
     context = {
-        'total_logs': total_logs,
-        'currently_parked': currently_parked,
-        'avg_duration': avg_duration_readable,
-        'top_vehicles': top_vehicles,
+        "total_logs": total_logs,
+        "currently_parked": currently_parked,
+        "avg_duration": avg_duration_readable,
+        "top_vehicles": top_vehicles,
     }
 
-    return render(request, 'parking/analytics.html', context)
+    return render(request, "parking/analytics.html", context)
+
 
 def vehicle_detail(request, plate):
-    vehicle = Vehicle.objects.get(license_plate=plate)
-    logs = EntryExitLog.objects.filter(vehicle=vehicle).order_by('entry_time')
+    vehicle = get_object_or_404(Vehicle, license_plate=plate.upper())
+    logs = EntryExitLog.objects.filter(vehicle=vehicle).order_by("entry_time")
 
     total_visits = logs.count()
     total_time = timedelta()
-    formated_total_time = format_duration(total_time)
     currently_parked = False
     days_visited = set()
-
     log_data = []
+
+    completed_visits = 0  # count only visits with exit_time
 
     for log in logs:
         duration = None
         if log.exit_time:
             duration = log.exit_time - log.entry_time
             total_time += duration
+            completed_visits += 1
         else:
             currently_parked = True
+
         days_visited.add(log.entry_time.date())
-        formated_duration = format_duration(duration)
-        log_data.append({
-            'entry_time': log.entry_time,
-            'exit_time': log.exit_time,
-            'duration': formated_duration,
-        })
+
+        log_data.append(
+            {
+                "entry_time": log.entry_time,
+                "exit_time": log.exit_time,
+                "duration": format_duration(duration),
+            }
+        )
+
+    avg_duration = total_time / completed_visits if completed_visits else None
 
     context = {
-        'vehicle': vehicle,
-        'logs': log_data,
-        'total_visits': total_visits,
-        'total_time': str(format_duration(total_time)),
-        'days_visited': len(days_visited),
-        'currently_parked': currently_parked,
+        "vehicle": vehicle,
+        "logs": log_data,
+        "total_visits": total_visits,
+        "total_time": format_duration(total_time),
+        "avg_duration": format_duration(avg_duration),
+        "days_visited": len(days_visited),
+        "currently_parked": currently_parked,
     }
-    return render(request, 'parking/vehicle_detail.html', context)
+
+    return render(request, "parking/vehicle_detail.html", context)
