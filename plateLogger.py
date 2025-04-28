@@ -14,6 +14,7 @@ def clean_plate_text(plate_text):
 
 
 # 📦 Load YOLO model
+# model = YOLO("runs/detect/train3/weights/best.pt")
 model = YOLO("runs/detect/train3/weights/best.pt")
 
 # Parse command line argument
@@ -22,7 +23,7 @@ parser.add_argument("--mode", default="entry", choices=["entry", "exit"])
 args = parser.parse_args()
 
 # 📷 Load image
-image_path = f"./plate_dataset/test/images/car2.jpg"
+image_path = f"./plate_dataset/test/images/car1.jpg"
 
 image = cv2.imread(image_path)
 

@@ -6,18 +6,19 @@ import os
 import django
 import time
 import re
+from pathlib import Path
 
-# 📦 Django setup
+# 🛠 Django setup
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "smarttrack.settings")
 django.setup()
 
 from parking.models import Vehicle, EntryExitLog
 from django.utils import timezone
 
-# 📦 Load YOLO model
+# 📦 Load YOLOv8 model
 model = YOLO("runs/detect/train3/weights/best.pt")
 
-# 🎥 Auto camera detection
+# 🎥 Open camera
 cap = None
 for i in range(5):
     temp_cap = cv2.VideoCapture(i)
@@ -31,32 +32,30 @@ for i in range(5):
 if cap is None:
     raise RuntimeError("❌ No available camera found.")
 
-# 🧠 EasyOCR
+# 🧠 OCR engine
 reader = easyocr.Reader(["en"])
 
-# 🚫 Cooldowns and tracking
-cooldown = 60  # seconds
-last_logged = {}
-plate_candidates = {}
-required_stable_frames = 3
-
-# 📏 Minimum YOLO confidence
+# 📏 Confidence threshold
 YOLO_CONFIDENCE_THRESHOLD = 0.5
 
-# 📊 Matplotlib setup
+# 📂 Create 'entries' folder if it doesn't exist
+entries_folder = Path("entries")
+entries_folder.mkdir(exist_ok=True)
+
+# 📊 Matplotlib live view
 plt.ion()
 fig, ax = plt.subplots()
 
 
 def clean_plate_text(text):
-    """Clean OCR text to acceptable plate format"""
+    """Clean OCR text to plate format."""
     text = re.sub(r"[^A-Z0-9]", "", text.upper())
     return text if 5 <= len(text) <= 12 else None
 
 
-print("[📡] Real-time YOLO + OCR stream started. Press Ctrl+C to stop.")
+print("[📡] Streaming started... Waiting for car...")
 
-frame_counter = 0
+captured = False
 
 while True:
     ret, frame = cap.read()
@@ -65,58 +64,66 @@ while True:
         time.sleep(1)
         continue
 
-    frame_counter += 1
+    # 📺 Live frame
+    ax.clear()
+    ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    ax.set_title("🚗 Waiting for vehicle...")
+    ax.axis("off")
+    plt.pause(0.001)
 
-    if frame_counter % 3 != 0:
-        # Only process every 3rd frame
-        continue
-
+    # 🧠 YOLO Detection
     results = model(frame)[0]
 
     for box in results.boxes:
         if box.conf < YOLO_CONFIDENCE_THRESHOLD:
             continue
 
+        # 🚀 Found something
         x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
         cropped = frame[y1:y2, x1:x2]
 
-        # OCR only on detected plate
+        # 🧪 OCR on cropped
         ocr_result = reader.readtext(cropped)
         plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
 
         if plate:
-            now = time.time()
+            print(f"[✅] Plate Detected: {plate}")
+            captured = True
 
-            # Step 1: Accumulate stable frames
-            plate_candidates[plate] = plate_candidates.get(plate, 0) + 1
+            # 📝 Save to Django
+            vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
+            EntryExitLog.objects.create(vehicle=vehicle, entry_time=timezone.now())
 
-            # Step 2: Confirm and log if stable
-            if plate_candidates[plate] == required_stable_frames:
-                if plate not in last_logged or (now - last_logged[plate]) > cooldown:
-                    print(f"[✅] Final Plate (Stable): {plate}")
-                    last_logged[plate] = now
+            # 🖼 Save captured frame
+            save_path = entries_folder / f"{plate}_{int(time.time())}.jpg"
+            cv2.imwrite(str(save_path), frame)
+            print(f"📸 Image saved to: {save_path}")
 
-                    # 🚀 Log to DB
-                    vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
-                    EntryExitLog.objects.create(
-                        vehicle=vehicle, entry_time=timezone.now()
-                    )
-
-            # Step 3: Draw bounding box anyway
+            # 🖍 Annotate
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(
                 frame,
                 plate,
                 (x1, max(y1 - 10, 0)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.9,
                 (255, 0, 0),
                 2,
             )
 
-    # 📺 Display
-    ax.clear()
-    ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    ax.set_title("📷 Live YOLO + OCR Feed (Stabilized)")
-    ax.axis("off")
-    plt.pause(0.001)
+            # 🎯 Show captured
+            ax.clear()
+            ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            ax.set_title(f"✅ Captured: {plate}")
+            ax.axis("off")
+            plt.pause(1)
+
+            break  
+
+    if captured:
+        print("👋 Exiting after capture...")
+        break
+
+# 🛠️ Clean Exit
+cap.release()
+cv2.destroyAllWindows()

@@ -32,9 +32,7 @@ class VehicleAdmin(admin.ModelAdmin):
 
 @admin.register(EntryExitLog)
 class EntryExitLogAdmin(admin.ModelAdmin):
-    change_list_template = (
-        "admin/parking/vehicle/change_list.html"  
-    )
+    change_list_template = "admin/parking/vehicle/change_list.html"
     list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable")
 
     def get_duration_readable(self, obj):
@@ -54,5 +52,5 @@ class EntryExitLogAdmin(admin.ModelAdmin):
         if extra_context is None:
             extra_context = {}
         extra_context["show_analytics_button"] = True
-        extra_context["analytics_url"] = reverse("analytics")  
+        extra_context["analytics_url"] = reverse("analytics")
         return super().changelist_view(request, extra_context=extra_context)
