@@ -33,7 +33,7 @@ class VehicleAdmin(admin.ModelAdmin):
 @admin.register(EntryExitLog)
 class EntryExitLogAdmin(admin.ModelAdmin):
     change_list_template = (
-        "admin/parking/vehicle/change_list.html"  
+        "admin/parking/vehicle/change_list.html" 
     )
     list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable")
 
