@@ -1,0 +1,36 @@
+{% extends "admin/change_list.html" %} {% load i18n %} {% block breadcrumbs %}
+<div
+  class="breadcrumbs"
+  style="
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #44b78b;
+    padding: 10px 40px;
+  "
+>
+  <div>{{ block.super }}</div>
+  {% if show_analytics_button %}
+  <div>
+    <a
+      href="{{ analytics_url }}"
+      class="button"
+      target="_blank"
+      style="
+        background: #0c4b33;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        transition: background-color 0.25s ease;
+      "
+      onmouseover="this.style.backgroundColor='#156c4b'"
+      onmouseout="this.style.backgroundColor='#0c4b33'"
+    >
+      View Analytics
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %} {% block object-tools %} {{ block.super }} {% endblock %}
