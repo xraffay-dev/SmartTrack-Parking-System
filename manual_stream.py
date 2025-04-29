@@ -1,10 +1,23 @@
+from pathlib import Path
+
+# Create directory for GUI if it doesn't exist
+gui_dir = Path.cwd() / "ui_snapshot_app"
+gui_dir.mkdir(exist_ok=True)
+
+# Content of the updated GUI script with capture + recapture functionality
+gui_script = """
 import cv2
-import matplotlib.pyplot as plt
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+import threading
+import time
 import easyocr
-from ultralytics import YOLO
 import os
 import django
-import time
+from ultralytics import YOLO
+from parking.models import Vehicle, EntryExitLog
+from django.utils import timezone
 import re
 from pathlib import Path
 
@@ -12,127 +25,93 @@ from pathlib import Path
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "smarttrack.settings")
 django.setup()
 
-from parking.models import Vehicle, EntryExitLog
-from django.utils import timezone
-
-# 📦 Load YOLOv8 model
+# 🧠 Load models
 model = YOLO("runs/detect/train3/weights/best.pt")
-
-# 🎥 Open camera
-cap = None
-for i in range(5):
-    temp_cap = cv2.VideoCapture(i)
-    ret, frame = temp_cap.read()
-    if ret and frame is not None:
-        print(f"✅ Found working camera at index {i}")
-        cap = temp_cap
-        break
-    temp_cap.release()
-
-if cap is None:
-    raise RuntimeError("❌ No available camera found.")
-
-# 🧠 OCR engine
 reader = easyocr.Reader(["en"])
 
-# 📂 Create 'entries' folder if it doesn't exist
-entries_folder = Path("entries")
-entries_folder.mkdir(exist_ok=True)
+# 📂 Snapshot folder
+entries_dir = Path("entries")
+entries_dir.mkdir(exist_ok=True)
 
-# 📊 Matplotlib live view
-plt.ion()
-fig, ax = plt.subplots()
+# 📷 Open camera
+cap = cv2.VideoCapture(1)
 
 def clean_plate_text(text):
-    """Clean OCR text to plate format."""
     text = re.sub(r'[^A-Z0-9]', '', text.upper())
     return text if 5 <= len(text) <= 12 else None
 
-print("[📡] Stream started... Press SPACE to capture a car.")
-
-snapshot_taken = False
-
-while True:
+def capture_snapshot():
     ret, frame = cap.read()
-    if not ret or frame is None:
-        print("❌ Frame capture failed.")
-        time.sleep(1)
-        continue
+    if not ret:
+        messagebox.showerror("Capture Error", "Could not read from camera.")
+        return None, None
+    filename = entries_dir / f"snapshot_{int(time.time())}.jpg"
+    cv2.imwrite(str(filename), frame)
+    return frame, filename
 
-    # 📺 Live stream
-    ax.clear()
-    ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    ax.set_title("🚗 Press SPACE to capture vehicle")
-    ax.axis("off")
-    plt.pause(0.001)
+def process_image(frame):
+    results = model(frame)[0]
+    for box in results.boxes:
+        if box.conf < 0.5:
+            continue
+        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+        cropped = frame[y1:y2, x1:x2]
+        ocr_result = reader.readtext(cropped)
+        plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
 
-    # 🧠 Wait for key press
-    key = cv2.waitKey(1) & 0xFF
+        if plate:
+            vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
+            EntryExitLog.objects.create(vehicle=vehicle, entry_time=timezone.now())
+            return plate
+    return None
 
-    if key == 32:  # SPACE key pressed
-        print("📸 Snapshot captured!")
-        snapshot_taken = True
-    elif key == ord('q'):  # Press 'q' to quit manually
-        print("👋 Quitting stream manually...")
-        break
+def handle_capture():
+    global last_frame
+    frame, filename = capture_snapshot()
+    if frame is not None:
+        last_frame = frame
+        plate = process_image(frame)
+        if plate:
+            messagebox.showinfo("Success", f"✅ Plate logged: {plate}")
+        else:
+            messagebox.showwarning("No Plate", "No license plate detected. Click Recapture to try again.")
+    else:
+        messagebox.showerror("Error", "Snapshot failed.")
 
-    if snapshot_taken:
-        # 📷 Save full frame
-        save_path = entries_folder / f"capture_{int(time.time())}.jpg"
-        cv2.imwrite(str(save_path), frame)
-        print(f"💾 Image saved to: {save_path}")
+def show_stream():
+    ret, frame = cap.read()
+    if not ret:
+        return
+    cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+    img = Image.fromarray(cv2image)
+    imgtk = ImageTk.PhotoImage(image=img)
+    video_panel.imgtk = imgtk
+    video_panel.config(image=imgtk)
+    video_panel.after(10, show_stream)
 
-        # 🔍 Run YOLO on captured frame
-        results = model(frame)[0]
+# 🧱 GUI Setup
+root = tk.Tk()
+root.title("SmartTrack Snapshot")
+root.geometry("800x600")
 
-        plate_detected = False
+video_panel = tk.Label(root)
+video_panel.pack()
 
-        for box in results.boxes:
-            if box.conf < 0.5:
-                continue
+btn_frame = tk.Frame(root)
+btn_frame.pack(pady=15)
 
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            cropped = frame[y1:y2, x1:x2]
+tk.Button(btn_frame, text="📸 Capture", width=20, command=handle_capture).pack(side=tk.LEFT, padx=10)
+tk.Button(btn_frame, text="🔁 Recapture", width=20, command=show_stream).pack(side=tk.LEFT, padx=10)
+tk.Button(btn_frame, text="❌ Exit", width=20, command=lambda: (cap.release(), root.destroy())).pack(side=tk.LEFT, padx=10)
 
-            # 🧠 OCR on cropped plate
-            ocr_result = reader.readtext(cropped)
-            plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
+last_frame = None
+show_stream()
+root.mainloop()
+"""
 
-            if plate:
-                print(f"[✅] Plate Detected: {plate}")
-                plate_detected = True
+# Save the script to a file
+script_path = gui_dir / "stream_snapshot_gui.py"
+with open(script_path, "w", encoding="utf-8") as f:
+    f.write(gui_script)
 
-                # 📝 Save to DB
-                vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
-                EntryExitLog.objects.create(vehicle=vehicle, entry_time=timezone.now())
-
-                # 🖍 Annotate
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(
-                    frame,
-                    plate,
-                    (x1, max(y1 - 10, 0)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9,
-                    (255, 0, 0),
-                    2,
-                )
-
-                # 🎯 Show result
-                ax.clear()
-                ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                ax.set_title(f"✅ Captured: {plate}")
-                ax.axis("off")
-                plt.pause(2)
-
-                break  # Only log 1 plate
-
-        if not plate_detected:
-            print("❌ No plate detected in captured image.")
-
-        print("👋 Stream closed after capture.")
-        break
-
-# 🚪 Clean exit
-cap.release()
-cv2.destroyAllWindows()
+script_path.name  # Return only the filename

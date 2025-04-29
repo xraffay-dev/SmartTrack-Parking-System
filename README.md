@@ -24,7 +24,6 @@ It also provides **beautiful analytics** and a customized **admin panel** for fu
 - 💵 **Billing system** — charge **50 Rs per hour** based on parking duration
 - 🎨 Enhanced, Modernized Django Admin Theme
 - 📷 Mobile Camera (iPhone via iVCam) or Webcam Live Stream Integration
-- 📊 Batch Processing Support for Testing Multiple Vehicles at Once
 
 ---
 
