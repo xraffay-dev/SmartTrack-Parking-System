@@ -14,7 +14,6 @@ def clean_plate_text(plate_text):
 
 
 # 📦 Load YOLO model
-# model = YOLO("runs/detect/train3/weights/best.pt")
 model = YOLO("runs/detect/train3/weights/best.pt")
 
 # Parse command line argument
@@ -23,7 +22,7 @@ parser.add_argument("--mode", default="entry", choices=["entry", "exit"])
 args = parser.parse_args()
 
 # 📷 Load image
-image_path = f"./plate_dataset/test/images/car1.jpg"
+image_path = f"./plate_dataset/test/images/car3.jpg"
 
 image = cv2.imread(image_path)
 
@@ -49,7 +48,7 @@ for box in results[0].boxes.xyxy:
 
     print("✅ Final Detected Plate:", cleaned_plate_text)
 
-    url = f"http://127.0.0.1:8000/parking/log/?plate={plate_text}"
+    url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}"
 
     # Send detected plate to your Django backend (as an entry)
     try:

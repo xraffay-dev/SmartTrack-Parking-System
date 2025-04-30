@@ -1,18 +1,5 @@
 import os
 import sys
-
-# Django setup
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "smarttrack.settings")
-import django
-
-django.setup()
-
-# Django models
-from parking.models import Vehicle, EntryExitLog
-from django.utils import timezone
-
-# Other imports
 import cv2
 import tkinter as tk
 from tkinter import messagebox
@@ -22,22 +9,29 @@ import easyocr
 import re
 from pathlib import Path
 from ultralytics import YOLO
+import requests
+from django.utils import timezone
 
-# Load models
+# Django setup
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "smarttrack.settings")
+import django
+
+django.setup()
+
+from parking.models import Vehicle, EntryExitLog
+
 model_path = "../runs/detect/train3/weights/best.pt"
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Model file not found: {model_path}")
 model = YOLO(model_path)
 reader = easyocr.Reader(["en"])
 
-# Snapshot folder
 entries_dir = Path("C:/Users/xraff/OneDrive/Desktop/smarttrack/entries")
 entries_dir.mkdir(exist_ok=True)
 
-# Initialize camera
 cap = cv2.VideoCapture(0)
 
-# GUI Setup
 root = tk.Tk()
 root.title("SmartTrack Snapshot")
 root.geometry("800x650")
@@ -81,10 +75,10 @@ def show_stream():
     imgtk = ImageTk.PhotoImage(image=img)
 
     video_panel.configure(image=imgtk)
-    video_panel.image = imgtk  # Prevent GC
+    video_panel.image = imgtk
     detect_plate_live(frame)
 
-    root.after(500, show_stream)  # Update every 0.5s for performance
+    root.after(500, show_stream)
 
 
 def capture_snapshot():
@@ -102,10 +96,16 @@ def capture_snapshot():
 def show_confirmation_window(frame, plate):
     confirm_window = tk.Toplevel(root)
     confirm_window.title("Confirm Plate")
-    confirm_window.geometry("800x600")
+    confirm_window.geometry("")  # Let window auto-fit content
 
+    confirm_window.lift()
+    confirm_window.attributes("-topmost", True)
+    confirm_window.after_idle(confirm_window.attributes, "-topmost", False)
+
+    # Resize and display image
     cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
     img = Image.fromarray(cv2image)
+    img = img.resize((600, 400), Image.Resampling.LANCZOS)
     imgtk = ImageTk.PhotoImage(image=img)
     img_label = tk.Label(confirm_window, image=imgtk)
     img_label.image = imgtk
@@ -116,26 +116,53 @@ def show_confirmation_window(frame, plate):
     )
     plate_label.pack(pady=10)
 
+    plate_entry = tk.Entry(confirm_window, font=("Arial", 16))
+    plate_entry.insert(0, plate)
+    plate_entry.pack(pady=10)
+
     def save_and_log():
+        new_plate = plate_entry.get().strip()
+        if not new_plate:
+            messagebox.showwarning("Invalid Plate", "Plate number cannot be empty.")
+            return
+
+        cleaned_plate_text = clean_plate_text(new_plate)
+        url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}"
+
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                print(f"✅ Logged to backend: {response.json()}")
+            else:
+                print(f"❌ Failed to log: {response.text}")
+        except Exception as e:
+            print(f"❗ Error logging to backend: {e}")
+
         timestamp = int(time.time())
         filename = entries_dir / f"snapshot_{timestamp}.jpg"
         cv2.imwrite(str(filename), frame)
-        vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
+
+        vehicle, _ = Vehicle.objects.get_or_create(license_plate=new_plate)
         EntryExitLog.objects.create(vehicle=vehicle, entry_time=timezone.now())
+
         confirm_window.destroy()
-        messagebox.showinfo("Success", f"✅ Plate logged: {plate}")
+        messagebox.showinfo("Success", f"✅ Plate logged: {new_plate}")
 
     def recapture():
         confirm_window.destroy()
+        capture_snapshot()
 
+    print("Creating confirmation buttons...")  # Debugging aid
     btn_frame = tk.Frame(confirm_window)
     btn_frame.pack(pady=20)
+
     tk.Button(btn_frame, text="✅ Continue", command=save_and_log, width=15).pack(
         side=tk.LEFT, padx=10
     )
     tk.Button(btn_frame, text="🔁 Recapture", command=recapture, width=15).pack(
         side=tk.LEFT, padx=10
     )
+    print("Buttons packed.")  # Debugging aid
 
 
 btn_frame = tk.Frame(root)
@@ -148,6 +175,5 @@ tk.Button(
     btn_frame, text="❌ Exit", width=20, command=lambda: (cap.release(), root.destroy())
 ).pack(side=tk.LEFT, padx=10)
 
-# Start stream
 show_stream()
 root.mainloop()
