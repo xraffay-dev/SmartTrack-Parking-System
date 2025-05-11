@@ -2,7 +2,6 @@ from django.contrib import admin
 from .models import Vehicle, EntryExitLog
 from django.utils.html import format_html
 from django.urls import reverse
-from datetime import timedelta
 
 
 @admin.register(Vehicle)
@@ -33,7 +32,7 @@ class VehicleAdmin(admin.ModelAdmin):
 @admin.register(EntryExitLog)
 class EntryExitLogAdmin(admin.ModelAdmin):
     change_list_template = "admin/parking/vehicle/change_list.html"
-    list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable")
+    list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable", "get_image_icon")
 
     def get_duration_readable(self, obj):
         if obj.exit_time and obj.entry_time:
@@ -47,6 +46,17 @@ class EntryExitLogAdmin(admin.ModelAdmin):
         return "-"
 
     get_duration_readable.short_description = "Duration"
+
+    def get_image_icon(self, obj):
+        if obj.image:
+            return format_html(
+                '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;"/></a>',
+                obj.image.url, obj.image.url
+            )
+        else:
+            return "-"
+    get_image_icon.short_description = "Image"
+    get_image_icon.allow_tags = True
 
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:

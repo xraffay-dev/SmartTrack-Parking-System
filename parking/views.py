@@ -6,17 +6,12 @@ from django.http import JsonResponse
 from .models import Vehicle, EntryExitLog, ParkingLog
 from django.shortcuts import render, get_object_or_404
 from django.db.models import Count, Avg, DurationField, ExpressionWrapper, F
+from django.db import transaction, IntegrityError
 
 
 def normalize_plate(plate):
-    # Remove all non-alphanumeric characters
-    cleaned = re.sub(r"[^A-Za-z0-9]", "", plate).upper()
-
-    # Split letters and digits
-    match = re.match(r"^([A-Z]+)(\d+)$", cleaned)
-    if match:
-        return f"{match.group(1)}-{match.group(2)}"
-    return cleaned  # fallback if pattern doesn't match
+    # Remove all non-alphanumeric characters and make uppercase
+    return re.sub(r"[^A-Z0-9]", "", plate.upper())
 
 
 def format_duration(duration):
@@ -29,65 +24,54 @@ def format_duration(duration):
 
 
 def log_plate(request):
-    plate = request.GET.get("plate")
-    mode = request.GET.get("mode", "entry")
-
+    plate = request.GET.get("plate") if request.method == "GET" else request.POST.get("plate")
     if not plate:
         return JsonResponse({"error": "Plate not provided"}, status=400)
 
-    plate = normalize_plate(plate)
+    # Normalize plate before any DB operation
+    plate = re.sub(r"[^A-Z0-9]", "", plate.upper().strip())
+    image_file = request.FILES.get("image") if request.method == "POST" else None
 
-    if mode == "entry":
-        # --- Parking Log ---
-        open_logs = ParkingLog.objects.filter(plate=plate, exit_time__isnull=True)
-        if open_logs.exists():
-            # Reuse exit logic by changing mode to exit
-            request.GET = request.GET.copy()
-            request.GET["mode"] = "exit"
-            return log_plate(request)
+    try:
+        with transaction.atomic():
+            vehicle, created = Vehicle.objects.select_for_update().get_or_create(license_plate=plate)
 
-        ParkingLog.objects.create(plate=plate, entry_time=now())
-
-        # --- EntryExitLog ---
-        # Check if vehicle exists, otherwise create it
-        vehicle, _ = Vehicle.objects.get_or_create(license_plate=plate)
-
-        EntryExitLog.objects.create(vehicle=vehicle, entry_time=now())
-
-        return JsonResponse({"message": "Entry logged", "plate": plate})
-
-    elif mode == "exit":
-        try:
-            # --- Parking Log ---
-            log = ParkingLog.objects.get(plate=plate, exit_time__isnull=True)
-            log.exit_time = now()
-            log.charge = log.calculate_charge()
-            log.save()
-
-            # --- EntryExitLog ---
-            # find open EntryExitLog and close it
-            vehicle = Vehicle.objects.get(license_plate=plate)
-            open_log = EntryExitLog.objects.filter(
-                vehicle=vehicle, exit_time__isnull=True
-            ).first()
+            open_log = EntryExitLog.objects.filter(vehicle=vehicle, is_open=True).order_by('-entry_time').first()
             if open_log:
+                # Mark exit only, do NOT create a new entry
+                open_log.is_open = False
                 open_log.exit_time = now()
                 open_log.save()
-
-            return JsonResponse(
-                {
-                    "message": "Exit logged",
+                duration = open_log.exit_time - open_log.entry_time
+                return JsonResponse({
+                    "action": "exit",
                     "plate": plate,
-                    "duration": str(log.exit_time - log.entry_time),
-                    "charge": log.charge,
-                }
-            )
-        except (ParkingLog.DoesNotExist, Vehicle.DoesNotExist):
-            return JsonResponse(
-                {"error": "No active entry found for this plate"}, status=404
-            )
+                    "entry_time": open_log.entry_time,
+                    "exit_time": open_log.exit_time,
+                    "duration": str(duration),
+                    "message": "Exit logged"
+                })
 
-    return JsonResponse({"error": "Invalid mode"}, status=400)
+            # No open log, create new entry
+            entry_log = EntryExitLog.objects.create(vehicle=vehicle, entry_time=now(), is_open=True)
+            if image_file:
+                entry_log.image.save(image_file.name, image_file)
+                entry_log.save()
+            ParkingLog.objects.create(plate=plate, entry_time=entry_log.entry_time)
+            return JsonResponse({
+                "action": "entry",
+                "plate": plate,
+                "entry_time": entry_log.entry_time,
+                "message": "Entry logged"
+            })
+    except IntegrityError as e:
+        return JsonResponse({
+            "error": "Could not create entry due to a race condition. Please try again."
+        }, status=500)
+    except Exception as e:
+        return JsonResponse({
+            "error": f"Unexpected error: {e}"
+        }, status=500)
 
 
 def analytics_view(request):
@@ -130,7 +114,7 @@ def vehicle_detail(request, plate):
     days_visited = set()
     log_data = []
 
-    completed_visits = 0  # count only visits with exit_time
+    completed_visits = 0
 
     for log in logs:
         duration = None

@@ -1,16 +1,16 @@
 import os
 import sys
 import cv2
+import re
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
-import time
-import easyocr
-import re
-from pathlib import Path
 from ultralytics import YOLO
-import requests
+from pathlib import Path
 from django.utils import timezone
+import easyocr
+import requests
+import time
 
 # Django setup
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -46,9 +46,7 @@ plate_display.pack(pady=5)
 
 
 def clean_plate_text(text):
-    text = re.sub(r"[^A-Z0-9]", "", text.upper())
-    return text if 5 <= len(text) <= 12 else None
-
+    return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 def detect_plate_live(frame):
     results = model(frame)[0]
@@ -65,7 +63,6 @@ def detect_plate_live(frame):
     detected_plate.set("📛 Plate Detected: ---")
     return None
 
-
 def show_stream():
     ret, frame = cap.read()
     if not ret:
@@ -80,7 +77,6 @@ def show_stream():
 
     root.after(500, show_stream)
 
-
 def capture_snapshot():
     ret, frame = cap.read()
     if not ret:
@@ -91,7 +87,6 @@ def capture_snapshot():
         messagebox.showwarning("No Plate", "No license plate detected.")
         return
     show_confirmation_window(frame, plate)
-
 
 def show_confirmation_window(frame, plate):
     confirm_window = tk.Toplevel(root)
@@ -141,9 +136,6 @@ def show_confirmation_window(frame, plate):
         timestamp = int(time.time())
         filename = entries_dir / f"snapshot_{timestamp}.jpg"
         cv2.imwrite(str(filename), frame)
-
-        vehicle, _ = Vehicle.objects.get_or_create(license_plate=new_plate)
-        EntryExitLog.objects.create(vehicle=vehicle, entry_time=timezone.now())
 
         confirm_window.destroy()
         messagebox.showinfo("Success", f"✅ Plate logged: {new_plate}")

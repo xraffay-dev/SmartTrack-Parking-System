@@ -5,12 +5,11 @@ import requests
 import argparse
 import cv2
 import re
+import datetime
 
 
 def clean_plate_text(plate_text):
-    # Replace any character that is not an alphabet, number, or hyphen with a hyphen
-    cleaned_text = re.sub(r"[^a-zA-Z0-9-]", "-", plate_text)
-    return cleaned_text
+    return re.sub(r"[^A-Z0-9]", "", plate_text.upper())
 
 
 # 📦 Load YOLO model
@@ -22,7 +21,7 @@ parser.add_argument("--mode", default="entry", choices=["entry", "exit"])
 args = parser.parse_args()
 
 # 📷 Load image
-image_path = f"./plate_dataset/test/images/car3.jpg"
+image_path = f"./plate_dataset/test/images/car1.jpg"
 
 image = cv2.imread(image_path)
 
@@ -48,15 +47,24 @@ for box in results[0].boxes.xyxy:
 
     print("✅ Final Detected Plate:", cleaned_plate_text)
 
-    url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}"
+    # Save cropped image with meaningful name
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    image_filename = f"{cleaned_plate_text}_{timestamp}.jpg"
+    image_path_save = f"entries/{image_filename}"
+    cv2.imwrite(image_path_save, cropped)
 
-    # Send detected plate to your Django backend (as an entry)
+    url = f"http://127.0.0.1:8000/parking/log/"
+
+    # Send detected plate and image to your Django backend (as an entry)
     try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            print("✅ Logged to backend:", response.json())
-        else:
-            print("❌ Failed to log:", response.text)
+        with open(image_path_save, "rb") as img_file:
+            files = {"image": (image_filename, img_file, "image/jpeg")}
+            data = {"plate": cleaned_plate_text, "mode": args.mode}
+            response = requests.post(url, data=data, files=files)
+            if response.status_code == 200:
+                print("✅ Logged to backend:", response.json())
+            else:
+                print("❌ Failed to log:", response.text)
     except Exception as e:
         print("❗ Error logging to backend:", e)
 
