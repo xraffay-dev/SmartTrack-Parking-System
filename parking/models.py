@@ -46,3 +46,8 @@ class ParkingLog(models.Model):
             hours = duration.total_seconds() / 3600
             return int(hours * 50)
         return 0
+        # Generate the URL for the vehicle's detail page based on license_plate
+        # Generate the URL for the vehicle's detail page based on license_plate
+        # Generate the URL for the vehicle's detail page based on license_plate
+        # Generate the URL for the vehicle's detail page based on license_plate
+        # Generate the URL for the vehicle's detail page based on license_plate
