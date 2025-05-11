@@ -54,23 +54,3 @@ class EntryExitLogAdmin(admin.ModelAdmin):
         extra_context["show_analytics_button"] = True
         extra_context["analytics_url"] = reverse("analytics")
         return super().changelist_view(request, extra_context=extra_context)
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
-        # Generate the URL for the vehicle's detail page based on license_plate
