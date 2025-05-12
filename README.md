@@ -14,16 +14,13 @@ It also provides **beautiful analytics** and a customized **admin panel** for fu
 
 ## ✨ Features
 
-- 📸 Real-time **License Plate Recognition** (YOLOv8 + EasyOCR)
-- 🧠 **Automatic Entry and Exit logging**
-- 🗂️ Full Admin Dashboard with:
-  - Vehicle History Tracking
-  - Vehicle Snapshots as Proof of Entry and Exit
-  - Visit Logs & Parking Durations
-  - Average Time Parked
-  - Number of Days Visited
-- 🎨 Enhanced, Modernized Django Admin Theme
-- 📷 Mobile Camera (iPhone via iVCam) or Webcam Live Stream Integration
+- **Automated License Plate Recognition**: Uses YOLO object detection and EasyOCR to detect and read license plates from images or live camera feed
+- **Entry/Exit Tracking**: Automatically logs when vehicles enter and exit the parking facility
+- **Real-time Camera Interface**: Interactive UI for capturing and processing license plates in real-time
+- **Manual Entry Option**: Supports manual license plate entry when automatic detection fails
+- **Comprehensive Analytics**: Track parking durations, frequent visitors, and current capacity
+- **Admin Dashboard**: Django admin interface with custom controls for system management
+- **Proof of Entry and Exit**: Timestamped images of vehicles with their license plates to serve as proof of entry and exit
 
 ---
 
