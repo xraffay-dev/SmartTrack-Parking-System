@@ -153,18 +153,34 @@ def vehicle_detail(request, plate):
 def launch_stream(request):
     import subprocess
     import os
+    import sys
+    from django.shortcuts import redirect
     
-    # Get the full path to stream.py
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    stream_script_path = os.path.join(project_dir, 'stream.py')
-    
-    # Change to the project directory and run the script
-    cmd = f'cd /d "{project_dir}" && python stream.py'
-    subprocess.Popen(['start', 'cmd', '/k', cmd], shell=True)
+    try:
+        # Get the current Python executable and project directory
+        python_exe = sys.executable
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        stream_script_path = os.path.join(project_dir, 'stream.py')
+        
+        # Create entries directory if it doesn't exist
+        entries_dir = os.path.join(project_dir, 'entries')
+        if not os.path.exists(entries_dir):
+            os.makedirs(entries_dir)
+        
+        # Launch the script more directly without string formatting
+        # This approach avoids shell parsing issues
+        subprocess.Popen(
+            [python_exe, stream_script_path],
+            cwd=project_dir,  # Set working directory to project dir
+            creationflags=subprocess.CREATE_NEW_CONSOLE  # Create a new console window
+        )
+        
+        print(f"Camera launched with: {python_exe} {stream_script_path}")
+    except Exception as e:
+        print(f"Error launching camera: {e}")
     
     # Redirect back to the previous page
     referer = request.META.get('HTTP_REFERER', '/admin/parking/vehicle/')
-    from django.shortcuts import redirect
     return redirect(referer)
 
 

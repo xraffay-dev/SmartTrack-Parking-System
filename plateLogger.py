@@ -21,7 +21,7 @@ parser.add_argument("--mode", default="entry", choices=["entry", "exit"])
 parser.add_argument("--image", help="Path to the image file to process")
 args = parser.parse_args()
 
-# 📷 Load image
+#  Load image
 if args.image:
     image_path = args.image
 else:
@@ -29,20 +29,20 @@ else:
 
 image = cv2.imread(image_path)
 
-# 🧠 Init OCR Reader (English only to avoid noise)
+#  Init OCR Reader (English only to avoid noise)
 reader = easyocr.Reader(["en"])
 
-# 🔍 Detect plate
+#  Detect plate
 results = model(image_path)
 
 for box in results[0].boxes.xyxy:
     x1, y1, x2, y2 = map(int, box)
     cropped = image[y1:y2, x1:x2]
 
-    # 🧪 Run EasyOCR
+    # Run EasyOCR
     result = reader.readtext(cropped)
 
-    # 📄 Extract text
+    # Extract text
     plate_text = ""
     if result:
         plate_text = result[0][1]  # First detected string

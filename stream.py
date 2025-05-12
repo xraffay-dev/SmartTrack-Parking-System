@@ -35,7 +35,8 @@ else:
 # Always load the OCR reader since we'll use it if available
 reader = easyocr.Reader(["en"])
 
-entries_dir = Path("C:/Users/xraff/OneDrive/Desktop/smarttrack/entries")
+# Use a relative path instead of hardcoded path
+entries_dir = Path(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'entries'))
 entries_dir.mkdir(exist_ok=True)
 
 cap = cv2.VideoCapture(0)
