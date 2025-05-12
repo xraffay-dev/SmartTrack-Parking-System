@@ -5,16 +5,7 @@ import re
 
 
 class Vehicle(models.Model):
-    LICENSE_TYPE = [
-        ("STAFF", "Staff"),
-        ("VISITOR", "Visitor"),
-    ]
-
     license_plate = models.CharField(max_length=20, unique=True)
-    owner_name = models.CharField(max_length=100, blank=True, null=True)
-    vehicle_type = models.CharField(
-        max_length=10, choices=LICENSE_TYPE, default="VISITOR"
-    )
     registered_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):

@@ -148,3 +148,147 @@ def vehicle_detail(request, plate):
     }
 
     return render(request, "parking/vehicle_detail.html", context)
+
+
+def launch_stream(request):
+    import subprocess
+    import os
+    
+    # Get the full path to stream.py
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    stream_script_path = os.path.join(project_dir, 'stream.py')
+    
+    # Change to the project directory and run the script
+    cmd = f'cd /d "{project_dir}" && python stream.py'
+    subprocess.Popen(['start', 'cmd', '/k', cmd], shell=True)
+    
+    # Redirect back to the previous page
+    referer = request.META.get('HTTP_REFERER', '/admin/parking/vehicle/')
+    from django.shortcuts import redirect
+    return redirect(referer)
+
+
+def upload_image(request):
+    import subprocess
+    import os
+    import tempfile
+    import shutil
+    from django.shortcuts import render, redirect
+    from .models import Vehicle, EntryExitLog
+    
+    if request.method == 'POST' and request.FILES.get('image'):
+        # Get the project directory
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Create entries directory if it doesn't exist
+        entries_dir = os.path.join(project_dir, 'entries')
+        if not os.path.exists(entries_dir):
+            os.makedirs(entries_dir)
+            
+        # Get the uploaded image
+        uploaded_image = request.FILES['image']
+        
+        # Save uploaded image directly to the entries directory with a temporary name
+        temp_path = os.path.join(entries_dir, f'temp_{uploaded_image.name}')
+        with open(temp_path, 'wb+') as destination:
+            for chunk in uploaded_image.chunks():
+                destination.write(chunk)
+        
+        # Process the image directly without using subprocess
+        try:
+            # Import the functions from plateLogger
+            import sys
+            sys.path.append(project_dir)
+            from ultralytics import YOLO
+            import easyocr
+            import re
+            import cv2
+            import datetime
+            
+            # Load models and image
+            model = YOLO(os.path.join(project_dir, "runs/detect/train3/weights/best.pt"))
+            reader = easyocr.Reader(["en"])
+            image = cv2.imread(temp_path)
+            
+            # Detect plate
+            results = model(image)
+            
+            # Process detection results
+            plate_text = ""
+            for box in results[0].boxes.xyxy:
+                x1, y1, x2, y2 = map(int, box)
+                cropped = image[y1:y2, x1:x2]
+                ocr_result = reader.readtext(cropped)
+                if ocr_result:
+                    plate_text = ocr_result[0][1]
+                    break
+            
+            # Clean plate text
+            cleaned_plate_text = re.sub(r"[^A-Z0-9]", "", plate_text.upper())
+            
+            if cleaned_plate_text:
+                # Determine if this is an entry or exit
+                # If the vehicle exists with an open log, it's an exit
+                # Otherwise, it's an entry
+                try:
+                    vehicle = Vehicle.objects.get(license_plate=cleaned_plate_text)
+                    open_log = EntryExitLog.objects.filter(vehicle=vehicle, is_open=True).first()
+                    if open_log:
+                        mode = "exit"
+                    else:
+                        mode = "entry"
+                except Vehicle.DoesNotExist:
+                    mode = "entry"
+                
+                # Save the image with the plate name
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                final_filename = f"{cleaned_plate_text}_{timestamp}.jpg"
+                final_path = os.path.join(entries_dir, final_filename)
+                
+                # If temp file already exists at the destination, remove it
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+                    
+                # Rename the temp file to the final name
+                shutil.move(temp_path, final_path)
+                
+                # Log the plate via the regular API
+                log_url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}"
+                import requests
+                response = requests.get(log_url)
+                api_response = response.json() if response.status_code == 200 else {"error": response.text}
+                
+                context = {
+                    'success': True,
+                    'output': f"✅ Plate detected: {cleaned_plate_text}\n✅ Mode determined: {mode}\n✅ Image saved as: {final_path}\n✅ API Response: {api_response}",
+                    'plate_number': cleaned_plate_text,
+                    'mode': mode,
+                    'image_path': f'/entries/{final_filename}'
+                }
+            else:
+                # No plate detected
+                context = {
+                    'success': False,
+                    'output': "❌ No license plate detected in the image.",
+                    'plate_number': None,
+                    'mode': None
+                }
+                # Remove the temp file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+        except Exception as e:
+            # Handle errors
+            context = {
+                'success': False,
+                'output': f"❌ Error processing image: {str(e)}",
+                'plate_number': None,
+                'mode': None
+            }
+            # Remove the temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        
+        return render(request, 'parking/upload_result.html', context)
+    
+    # If GET request or no image uploaded, show the upload form
+    return render(request, 'parking/upload_image.html', {})

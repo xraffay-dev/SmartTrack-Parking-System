@@ -1,0 +1,91 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Upload Image - License Plate Detection{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .upload-form {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f8f8f8;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    .form-row {
+        margin-bottom: 15px;
+    }
+    .form-label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    .button-row {
+        margin-top: 20px;
+    }
+    .preview-container {
+        margin-top: 15px;
+        text-align: center;
+    }
+    #image-preview {
+        max-width: 100%;
+        max-height: 300px;
+        display: none;
+        margin: 10px auto;
+        border: 1px solid #ddd;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a> &rsaquo; Upload Image
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="upload-form">
+    <h1>Upload Image for License Plate Detection</h1>
+    <p>Upload an image containing a license plate to detect and log the vehicle.</p>
+    
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="form-row">
+            <label class="form-label" for="image">Select Image:</label>
+            <input type="file" name="image" id="image" accept="image/*" required onchange="previewImage(this);">
+            <div class="preview-container">
+                <img id="image-preview" src="#" alt="Image Preview">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <p class="help-text" style="color: #666;">The system will automatically determine if this is an entry or exit based on the vehicle's current status in the database.</p>
+        </div>
+        
+        <div class="button-row">
+            <button type="submit" class="default" style="background: #44b78b; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer;">
+                Process Image
+            </button>
+            <a href="{% url 'admin:parking_vehicle_changelist' %}" style="margin-left: 10px; color: #666; text-decoration: none;">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    function previewImage(input) {
+        var preview = document.getElementById('image-preview');
+        if (input.files && input.files[0]) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(input.files[0]);
+        } else {
+            preview.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

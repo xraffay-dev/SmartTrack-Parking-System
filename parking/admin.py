@@ -7,7 +7,7 @@ from django.urls import reverse
 @admin.register(Vehicle)
 class VehicleAdmin(admin.ModelAdmin):
     change_list_template = "admin/parking/vehicle/change_list.html"
-    list_display = ("license_plate", "vehicle_type", "owner_name", "view_history_link")
+    list_display = ("license_plate", "view_history_link")
 
     def view_history_link(self, obj):
         # Generate the URL for the vehicle's detail page based on license_plate

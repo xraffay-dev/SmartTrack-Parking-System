@@ -15,13 +15,17 @@ def clean_plate_text(plate_text):
 # 📦 Load YOLO model
 model = YOLO("runs/detect/train3/weights/best.pt")
 
-# Parse command line argument
+# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--mode", default="entry", choices=["entry", "exit"])
+parser.add_argument("--image", help="Path to the image file to process")
 args = parser.parse_args()
 
 # 📷 Load image
-image_path = f"./plate_dataset/test/images/car1.jpg"
+if args.image:
+    image_path = args.image
+else:
+    image_path = f"./plate_dataset/test/images/car2.jpg"  # Default image
 
 image = cv2.imread(image_path)
 
@@ -47,24 +51,26 @@ for box in results[0].boxes.xyxy:
 
     print("✅ Final Detected Plate:", cleaned_plate_text)
 
-    # Save cropped image with meaningful name
+    # Save the full car image with the license plate number in the filename
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     image_filename = f"{cleaned_plate_text}_{timestamp}.jpg"
     image_path_save = f"entries/{image_filename}"
-    cv2.imwrite(image_path_save, cropped)
+    cv2.imwrite(image_path_save, image)  # Save the full image instead of cropped
+    print(f"✅ Full car image saved as: {image_path_save}")
 
-    url = f"http://127.0.0.1:8000/parking/log/"
+    # Use GET request to avoid CSRF issues
+    url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}&mode={args.mode}"
 
-    # Send detected plate and image to your Django backend (as an entry)
+    # Send detected plate to your Django backend (as an entry)
     try:
-        with open(image_path_save, "rb") as img_file:
-            files = {"image": (image_filename, img_file, "image/jpeg")}
-            data = {"plate": cleaned_plate_text, "mode": args.mode}
-            response = requests.post(url, data=data, files=files)
-            if response.status_code == 200:
-                print("✅ Logged to backend:", response.json())
-            else:
-                print("❌ Failed to log:", response.text)
+        response = requests.get(url)
+        if response.status_code == 200:
+            print("✅ Logged to backend:", response.json())
+        else:
+            print("❌ Failed to log:", response.text)
+            
+        # Save image separately - we'll just save it locally since GET can't send files
+        print(f"✅ Image saved locally as: {image_path_save}")
     except Exception as e:
         print("❗ Error logging to backend:", e)
 

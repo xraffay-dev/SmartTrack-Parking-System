@@ -11,6 +11,7 @@ from django.utils import timezone
 import easyocr
 import requests
 import time
+import datetime
 
 # Django setup
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -21,10 +22,17 @@ django.setup()
 
 from parking.models import Vehicle, EntryExitLog
 
-model_path = "../runs/detect/train3/weights/best.pt"
-if not os.path.exists(model_path):
-    raise FileNotFoundError(f"Model file not found: {model_path}")
-model = YOLO(model_path)
+# Try to load the YOLO model if it exists, otherwise use manual entry mode
+model_path = "./runs/detect/train3/weights/best.pt"
+model_exists = os.path.exists(model_path)
+
+if model_exists:
+    model = YOLO(model_path)
+    print(f"YOLO model loaded from {model_path}")
+else:
+    print(f"YOLO model not found at {model_path}. Running in manual entry mode.")
+
+# Always load the OCR reader since we'll use it if available
 reader = easyocr.Reader(["en"])
 
 entries_dir = Path("C:/Users/xraff/OneDrive/Desktop/smarttrack/entries")
@@ -49,19 +57,30 @@ def clean_plate_text(text):
     return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 def detect_plate_live(frame):
-    results = model(frame)[0]
-    for box in results.boxes:
-        if box.conf < 0.5:
-            continue
-        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-        cropped = frame[y1:y2, x1:x2]
-        ocr_result = reader.readtext(cropped)
-        plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
-        if plate:
-            detected_plate.set(f"📛 Plate Detected: {plate}")
-            return plate
-    detected_plate.set("📛 Plate Detected: ---")
-    return None
+    # If model doesn't exist, return None and show manual entry mode
+    if not model_exists:
+        detected_plate.set("📛 Manual Entry Mode (No YOLO model)")
+        return None
+    
+    # If model exists, use it for detection
+    try:
+        results = model(frame)[0]
+        for box in results.boxes:
+            if box.conf < 0.5:
+                continue
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            cropped = frame[y1:y2, x1:x2]
+            ocr_result = reader.readtext(cropped)
+            plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
+            if plate:
+                detected_plate.set(f"📛 Plate Detected: {plate}")
+                return plate
+        detected_plate.set("📛 Plate Detected: ---")
+        return None
+    except Exception as e:
+        print(f"Error in detection: {e}")
+        detected_plate.set("📛 Detection Error")
+        return None
 
 def show_stream():
     ret, frame = cap.read()
@@ -82,10 +101,22 @@ def capture_snapshot():
     if not ret:
         messagebox.showerror("Capture Error", "Could not read from camera.")
         return
-    plate = detect_plate_live(frame)
-    if not plate:
-        messagebox.showwarning("No Plate", "No license plate detected.")
-        return
+    
+    if model_exists:
+        # Try to detect plate using YOLO model
+        plate = detect_plate_live(frame)
+        if not plate:
+            # No plate detected, ask if user wants to enter manually
+            manual_entry = messagebox.askyesno("No Plate", "No license plate detected. Would you like to enter it manually?")
+            if not manual_entry:
+                return
+            # Use empty string as placeholder for manual entry
+            plate = ""
+    else:
+        # In manual mode, always use empty string as placeholder
+        plate = ""
+    
+    # Show confirmation window with the captured frame and detected/empty plate
     show_confirmation_window(frame, plate)
 
 def show_confirmation_window(frame, plate):
@@ -106,14 +137,25 @@ def show_confirmation_window(frame, plate):
     img_label.image = imgtk
     img_label.pack()
 
-    plate_label = tk.Label(
-        confirm_window, text=f"Detected Plate: {plate}", font=("Arial", 18)
-    )
+    # Display appropriate label based on whether plate was detected or manual entry
+    if plate:
+        plate_label = tk.Label(
+            confirm_window, text=f"Detected Plate: {plate}", font=("Arial", 18)
+        )
+    else:
+        plate_label = tk.Label(
+            confirm_window, text="Manual Entry Mode", font=("Arial", 18)
+        )
     plate_label.pack(pady=10)
 
+    # Create entry field for plate number
     plate_entry = tk.Entry(confirm_window, font=("Arial", 16))
-    plate_entry.insert(0, plate)
+    if plate:  # Only pre-fill if plate was detected
+        plate_entry.insert(0, plate)
     plate_entry.pack(pady=10)
+    
+    # Focus on entry field for immediate typing in manual mode
+    plate_entry.focus()
 
     def save_and_log():
         new_plate = plate_entry.get().strip()
@@ -133,9 +175,12 @@ def show_confirmation_window(frame, plate):
         except Exception as e:
             print(f"❗ Error logging to backend: {e}")
 
-        timestamp = int(time.time())
-        filename = entries_dir / f"snapshot_{timestamp}.jpg"
+        # Format timestamp in the same way as plateLogger.py
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        # Use the license plate as part of the filename, just like plateLogger.py
+        filename = entries_dir / f"{cleaned_plate_text}_{timestamp}.jpg"
         cv2.imwrite(str(filename), frame)
+        print(f"✅ Image saved as: {filename}")
 
         confirm_window.destroy()
         messagebox.showinfo("Success", f"✅ Plate logged: {new_plate}")

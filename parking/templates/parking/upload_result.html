@@ -1,0 +1,108 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Image Processing Results{% endblock %}
+
+{% block extrastyle %}
+<style>
+    .result-container {
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f8f8f8;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    .success-message {
+        padding: 15px;
+        background-color: #dff0d8;
+        color: #3c763d;
+        border: 1px solid #d6e9c6;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .error-message {
+        padding: 15px;
+        background-color: #f2dede;
+        color: #a94442;
+        border: 1px solid #ebccd1;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .plate-info {
+        margin: 15px 0;
+        padding: 10px;
+        background: #e9f7ef;
+        border-left: 4px solid #44b78b;
+    }
+    .output-container {
+        margin-top: 20px;
+        border: 1px solid #ddd;
+        padding: 10px;
+        background: #f5f5f5;
+        border-radius: 3px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        white-space: pre-wrap;
+    }
+    .action-buttons {
+        margin-top: 20px;
+    }
+    .action-button {
+        display: inline-block;
+        padding: 8px 15px;
+        margin-right: 10px;
+        background: #44b78b;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a> &rsaquo; 
+    <a href="{% url 'upload_image' %}">Upload Image</a> &rsaquo; Results
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="result-container">
+    <h1>Image Processing Results</h1>
+    
+    {% if success %}
+        <div class="success-message">
+            <strong>✅ Success!</strong> The image was processed successfully.
+        </div>
+        
+        {% if plate_number %}
+        <div class="plate-info">
+            <h2>Detected License Plate: {{ plate_number }}</h2>
+            <p>Mode: <strong>{{ mode|title }}</strong></p>
+            <p>The vehicle has been logged in the system.</p>
+        </div>
+        {% else %}
+        <div class="plate-info" style="border-left: 4px solid #f39c12;">
+            <h2>⚠️ No License Plate Detected</h2>
+            <p>The system couldn't identify a license plate in the uploaded image.</p>
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="error-message">
+            <strong>❌ Error!</strong> There was a problem processing the image.
+        </div>
+    {% endif %}
+    
+    <div class="output-container">
+        <h3>Processing Output:</h3>
+        <div>{{ output }}</div>
+    </div>
+    
+    <div class="action-buttons">
+        <a href="{% url 'upload_image' %}" class="action-button">Upload Another Image</a>
+        <a href="{% url 'admin:parking_vehicle_changelist' %}" class="action-button" style="background: #6c757d;">Return to Vehicles</a>
+    </div>
+</div>
+{% endblock %}

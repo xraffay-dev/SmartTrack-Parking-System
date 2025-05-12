@@ -11,9 +11,9 @@
 >
   <div>{{ block.super }}</div>
   {% if show_analytics_button %}
-  <div>
+  <div style="display: flex; gap: 10px;">
     <a
-      href="{{ analytics_url }}"
+      href="{% url 'analytics' %}"
       class="button"
       target="_blank"
       style="
@@ -29,6 +29,40 @@
       onmouseout="this.style.backgroundColor='#0c4b33'"
     >
       View Analytics
+    </a>
+    <a
+      href="{% url 'launch_stream' %}"
+      class="button"
+      style="
+        background: #d32f2f;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        transition: background-color 0.25s ease;
+      "
+      onmouseover="this.style.backgroundColor='#f44336'"
+      onmouseout="this.style.backgroundColor='#d32f2f'"
+    >
+      Start Camera
+    </a>
+    <a
+      href="{% url 'upload_image' %}"
+      class="button"
+      style="
+        background: #1976d2;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-size: 14px;
+        transition: background-color 0.25s ease;
+      "
+      onmouseover="this.style.backgroundColor='#2196f3'"
+      onmouseout="this.style.backgroundColor='#1976d2'"
+    >
+      Feed Image
     </a>
   </div>
   {% endif %}
