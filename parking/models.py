@@ -9,7 +9,6 @@ class Vehicle(models.Model):
     registered_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):
-        # Normalize plate before saving
         self.license_plate = re.sub(r"[^A-Z0-9]", "", self.license_plate.upper().strip())
 
     def save(self, *args, **kwargs):

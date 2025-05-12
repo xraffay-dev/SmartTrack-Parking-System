@@ -10,29 +10,27 @@ class VehicleAdmin(admin.ModelAdmin):
     list_display = ("license_plate", "view_history_link")
 
     def view_history_link(self, obj):
-        # Generate the URL for the vehicle's detail page based on license_plate
         url = reverse("vehicle_detail", args=[obj.license_plate])
         return format_html(
-            f'<a href="{url}" target="_blank" class="button">View History</a>'
+            f'<a href="{url}" target="_blank" class="button" style>View History</a>'
         )
 
     view_history_link.short_description = "History"
 
     def changelist_view(self, request, extra_context=None):
-        # Add custom extra context for the changelist view
         if extra_context is None:
             extra_context = {}
         extra_context["show_analytics_button"] = True
         extra_context["analytics_url"] = reverse(
             "analytics"
-        )  # URL for the analytics page
+        )
         return super().changelist_view(request, extra_context=extra_context)
 
 
 @admin.register(EntryExitLog)
 class EntryExitLogAdmin(admin.ModelAdmin):
     change_list_template = "admin/parking/vehicle/change_list.html"
-    list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable", "get_image_icon")
+    list_display = ("vehicle", "entry_time", "exit_time", "get_duration_readable", "get_entry_image", "get_exit_image")
 
     def get_duration_readable(self, obj):
         if obj.exit_time and obj.entry_time:
@@ -46,17 +44,110 @@ class EntryExitLogAdmin(admin.ModelAdmin):
         return "-"
 
     get_duration_readable.short_description = "Duration"
-
-    def get_image_icon(self, obj):
-        if obj.image:
+    
+    def get_entry_image(self, obj):
+        import os
+        from django.conf import settings
+        
+        license_plate = obj.vehicle.license_plate.strip().upper()
+        
+        entry_timestamp = obj.entry_time.strftime('%Y%m%d_%H%M%S')
+        
+        entries_dir = os.path.join(settings.BASE_DIR, 'entries')
+        if os.path.exists(entries_dir):
+            entry_image_prefix = f"{license_plate}_{entry_timestamp[:8]}"  # Match the date part
+            
+            for filename in os.listdir(entries_dir):
+                if filename.startswith(license_plate) and entry_timestamp[:8] in filename:
+                    image_url = f"/entries/{filename}"
+                    return format_html(
+                        '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;" title="{}" /></a>',
+                        image_url, image_url, filename
+                    )
+        
+        if obj.image and not obj.exit_time:
             return format_html(
                 '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;"/></a>',
                 obj.image.url, obj.image.url
             )
-        else:
+            
+        return "-"
+    
+    get_entry_image.short_description = "Entry Image"
+    get_entry_image.allow_tags = True
+
+    def get_exit_image(self, obj):
+        import os
+        from django.conf import settings
+        import datetime
+        
+        if not obj.exit_time:
             return "-"
-    get_image_icon.short_description = "Image"
-    get_image_icon.allow_tags = True
+            
+        license_plate = obj.vehicle.license_plate.strip().upper()
+        
+        entry_time = obj.entry_time
+        exit_time = obj.exit_time
+        
+        buffer_before = exit_time - datetime.timedelta(minutes=5)
+        buffer_after = exit_time + datetime.timedelta(minutes=5)
+        
+        entry_timestamp_str = entry_time.strftime('%Y%m%d_%H%M%S')
+        
+        entries_dir = os.path.join(settings.BASE_DIR, 'entries')
+        if os.path.exists(entries_dir):
+            matching_files = []
+            for filename in os.listdir(entries_dir):
+                if filename.startswith(license_plate):
+                    try:
+                        parts = filename.split('_')
+                        if len(parts) >= 3:
+                            timestamp_str = f"{parts[1]}_{parts[2].split('.')[0]}"
+                            
+                            # Skip files with timestamps before entry time
+                            if timestamp_str <= entry_timestamp_str:
+                                continue
+                                
+                            # This is potentially an exit image
+                            matching_files.append((filename, timestamp_str))
+                    except Exception as e:
+                        print(f"Error parsing filename {filename}: {e}")
+                        continue
+            
+            # Sort by timestamp (newest first) and get the first one close to exit time
+            if matching_files:
+                matching_files.sort(key=lambda x: x[1], reverse=True)
+                
+                # Use the most recent image (should be the exit image)
+                exit_filename, _ = matching_files[0]
+                image_url = f"/entries/{exit_filename}"
+                return format_html(
+                    '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;" title="{}" /></a>',
+                    image_url, image_url, exit_filename
+                )
+        
+        # If we have a direct image from the model and it's not the same as entry image
+        if obj.image:
+            # Only use this if we couldn't find a better match in the files
+            # and if the timestamp in the filename is close to exit time
+            try:
+                image_name = os.path.basename(obj.image.name)
+                # Don't use the same image for both entry and exit
+                entry_image_html = self.get_entry_image(obj)
+                if entry_image_html != "-" and image_name in entry_image_html:
+                    return "-"  # It's the same as entry image
+                
+                return format_html(
+                    '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;"/></a>',
+                    obj.image.url, obj.image.url
+                )
+            except:
+                pass
+            
+        return "-"
+    
+    get_exit_image.short_description = "Exit Image"
+    get_exit_image.allow_tags = True
 
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:
