@@ -13,7 +13,6 @@ import requests
 import time
 import datetime
 
-# Django setup
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "smarttrack.settings")
 import django
@@ -22,7 +21,6 @@ django.setup()
 
 from parking.models import Vehicle, EntryExitLog
 
-# Try to load the YOLO model if it exists, otherwise use manual entry mode
 model_path = "./runs/detect/train3/weights/best.pt"
 model_exists = os.path.exists(model_path)
 
@@ -32,10 +30,8 @@ if model_exists:
 else:
     print(f"YOLO model not found at {model_path}. Running in manual entry mode.")
 
-# Always load the OCR reader since we'll use it if available
 reader = easyocr.Reader(["en"])
 
-# Use a relative path instead of hardcoded path
 entries_dir = Path(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'entries'))
 entries_dir.mkdir(exist_ok=True)
 
@@ -58,12 +54,10 @@ def clean_plate_text(text):
     return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 def detect_plate_live(frame):
-    # If model doesn't exist, return None and show manual entry mode
     if not model_exists:
         detected_plate.set("📛 Manual Entry Mode (No YOLO model)")
         return None
     
-    # If model exists, use it for detection
     try:
         results = model(frame)[0]
         for box in results.boxes:
@@ -74,13 +68,13 @@ def detect_plate_live(frame):
             ocr_result = reader.readtext(cropped)
             plate = clean_plate_text(ocr_result[0][1]) if ocr_result else None
             if plate:
-                detected_plate.set(f"📛 Plate Detected: {plate}")
+                detected_plate.set(f"Plate Detected: {plate}")
                 return plate
-        detected_plate.set("📛 Plate Detected: ---")
+        detected_plate.set("Plate Detected: ---")
         return None
     except Exception as e:
         print(f"Error in detection: {e}")
-        detected_plate.set("📛 Detection Error")
+        detected_plate.set("Detection Error")
         return None
 
 def show_stream():
@@ -104,20 +98,15 @@ def capture_snapshot():
         return
     
     if model_exists:
-        # Try to detect plate using YOLO model
         plate = detect_plate_live(frame)
         if not plate:
-            # No plate detected, ask if user wants to enter manually
             manual_entry = messagebox.askyesno("No Plate", "No license plate detected. Would you like to enter it manually?")
             if not manual_entry:
                 return
-            # Use empty string as placeholder for manual entry
             plate = ""
     else:
-        # In manual mode, always use empty string as placeholder
         plate = ""
     
-    # Show confirmation window with the captured frame and detected/empty plate
     show_confirmation_window(frame, plate)
 
 def show_confirmation_window(frame, plate):
@@ -138,7 +127,6 @@ def show_confirmation_window(frame, plate):
     img_label.image = imgtk
     img_label.pack()
 
-    # Display appropriate label based on whether plate was detected or manual entry
     if plate:
         plate_label = tk.Label(
             confirm_window, text=f"Detected Plate: {plate}", font=("Arial", 18)
@@ -149,13 +137,11 @@ def show_confirmation_window(frame, plate):
         )
     plate_label.pack(pady=10)
 
-    # Create entry field for plate number
     plate_entry = tk.Entry(confirm_window, font=("Arial", 16))
-    if plate:  # Only pre-fill if plate was detected
+    if plate:  
         plate_entry.insert(0, plate)
     plate_entry.pack(pady=10)
     
-    # Focus on entry field for immediate typing in manual mode
     plate_entry.focus()
 
     def save_and_log():
@@ -176,9 +162,7 @@ def show_confirmation_window(frame, plate):
         except Exception as e:
             print(f"❗ Error logging to backend: {e}")
 
-        # Format timestamp in the same way as plateLogger.py
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        # Use the license plate as part of the filename, just like plateLogger.py
         filename = entries_dir / f"{cleaned_plate_text}_{timestamp}.jpg"
         cv2.imwrite(str(filename), frame)
         print(f"✅ Image saved as: {filename}")
@@ -190,7 +174,6 @@ def show_confirmation_window(frame, plate):
         confirm_window.destroy()
         capture_snapshot()
 
-    print("Creating confirmation buttons...")  # Debugging aid
     btn_frame = tk.Frame(confirm_window)
     btn_frame.pack(pady=20)
 
@@ -200,7 +183,6 @@ def show_confirmation_window(frame, plate):
     tk.Button(btn_frame, text="🔁 Recapture", command=recapture, width=15).pack(
         side=tk.LEFT, padx=10
     )
-    print("Buttons packed.")  # Debugging aid
 
 
 btn_frame = tk.Frame(root)

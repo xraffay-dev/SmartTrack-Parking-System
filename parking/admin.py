@@ -104,21 +104,17 @@ class EntryExitLogAdmin(admin.ModelAdmin):
                         if len(parts) >= 3:
                             timestamp_str = f"{parts[1]}_{parts[2].split('.')[0]}"
                             
-                            # Skip files with timestamps before entry time
                             if timestamp_str <= entry_timestamp_str:
                                 continue
                                 
-                            # This is potentially an exit image
                             matching_files.append((filename, timestamp_str))
                     except Exception as e:
                         print(f"Error parsing filename {filename}: {e}")
                         continue
             
-            # Sort by timestamp (newest first) and get the first one close to exit time
             if matching_files:
                 matching_files.sort(key=lambda x: x[1], reverse=True)
                 
-                # Use the most recent image (should be the exit image)
                 exit_filename, _ = matching_files[0]
                 image_url = f"/entries/{exit_filename}"
                 return format_html(
@@ -126,16 +122,12 @@ class EntryExitLogAdmin(admin.ModelAdmin):
                     image_url, image_url, exit_filename
                 )
         
-        # If we have a direct image from the model and it's not the same as entry image
         if obj.image:
-            # Only use this if we couldn't find a better match in the files
-            # and if the timestamp in the filename is close to exit time
             try:
                 image_name = os.path.basename(obj.image.name)
-                # Don't use the same image for both entry and exit
                 entry_image_html = self.get_entry_image(obj)
                 if entry_image_html != "-" and image_name in entry_image_html:
-                    return "-"  # It's the same as entry image
+                    return "-" 
                 
                 return format_html(
                     '<a href="{}" target="_blank"><img src="{}" style="height:32px;width:auto;"/></a>',

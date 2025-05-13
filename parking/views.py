@@ -10,7 +10,6 @@ from django.db import transaction, IntegrityError
 
 
 def normalize_plate(plate):
-    # Remove all non-alphanumeric characters and make uppercase
     return re.sub(r"[^A-Z0-9]", "", plate.upper())
 
 
@@ -28,7 +27,6 @@ def log_plate(request):
     if not plate:
         return JsonResponse({"error": "Plate not provided"}, status=400)
 
-    # Normalize plate before any DB operation
     plate = re.sub(r"[^A-Z0-9]", "", plate.upper().strip())
     image_file = request.FILES.get("image") if request.method == "POST" else None
 
@@ -38,7 +36,6 @@ def log_plate(request):
 
             open_log = EntryExitLog.objects.filter(vehicle=vehicle, is_open=True).order_by('-entry_time').first()
             if open_log:
-                # Mark exit only, do NOT create a new entry
                 open_log.is_open = False
                 open_log.exit_time = now()
                 open_log.save()
@@ -52,7 +49,6 @@ def log_plate(request):
                     "message": "Exit logged"
                 })
 
-            # No open log, create new entry
             entry_log = EntryExitLog.objects.create(vehicle=vehicle, entry_time=now(), is_open=True)
             if image_file:
                 entry_log.image.save(image_file.name, image_file)
@@ -78,7 +74,6 @@ def analytics_view(request):
     total_logs = EntryExitLog.objects.count()
     currently_parked = EntryExitLog.objects.filter(exit_time__isnull=True).count()
 
-    # Parking duration (only logs with exits)
     durations = EntryExitLog.objects.exclude(exit_time__isnull=True).annotate(
         duration=ExpressionWrapper(
             F("exit_time") - F("entry_time"), output_field=DurationField()
@@ -87,7 +82,6 @@ def analytics_view(request):
     avg_duration = durations.aggregate(avg=Avg("duration"))["avg"]
     avg_duration_readable = format_duration(avg_duration)
 
-    # Most frequent vehicles
     top_vehicles = (
         EntryExitLog.objects.values("vehicle__license_plate")
         .annotate(count=Count("id"))
@@ -157,29 +151,24 @@ def launch_stream(request):
     from django.shortcuts import redirect
     
     try:
-        # Get the current Python executable and project directory
         python_exe = sys.executable
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         stream_script_path = os.path.join(project_dir, 'stream.py')
         
-        # Create entries directory if it doesn't exist
         entries_dir = os.path.join(project_dir, 'entries')
         if not os.path.exists(entries_dir):
             os.makedirs(entries_dir)
         
-        # Launch the script more directly without string formatting
-        # This approach avoids shell parsing issues
         subprocess.Popen(
             [python_exe, stream_script_path],
-            cwd=project_dir,  # Set working directory to project dir
-            creationflags=subprocess.CREATE_NEW_CONSOLE  # Create a new console window
+            cwd=project_dir,
+            creationflags=subprocess.CREATE_NEW_CONSOLE
         )
         
         print(f"Camera launched with: {python_exe} {stream_script_path}")
     except Exception as e:
         print(f"Error launching camera: {e}")
     
-    # Redirect back to the previous page
     referer = request.META.get('HTTP_REFERER', '/admin/parking/vehicle/')
     return redirect(referer)
 
@@ -193,26 +182,20 @@ def upload_image(request):
     from .models import Vehicle, EntryExitLog
     
     if request.method == 'POST' and request.FILES.get('image'):
-        # Get the project directory
         project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
-        # Create entries directory if it doesn't exist
         entries_dir = os.path.join(project_dir, 'entries')
         if not os.path.exists(entries_dir):
             os.makedirs(entries_dir)
             
-        # Get the uploaded image
         uploaded_image = request.FILES['image']
         
-        # Save uploaded image directly to the entries directory with a temporary name
         temp_path = os.path.join(entries_dir, f'temp_{uploaded_image.name}')
         with open(temp_path, 'wb+') as destination:
             for chunk in uploaded_image.chunks():
                 destination.write(chunk)
         
-        # Process the image directly without using subprocess
         try:
-            # Import the functions from plateLogger
             import sys
             sys.path.append(project_dir)
             from ultralytics import YOLO
@@ -221,15 +204,12 @@ def upload_image(request):
             import cv2
             import datetime
             
-            # Load models and image
             model = YOLO(os.path.join(project_dir, "runs/detect/train3/weights/best.pt"))
             reader = easyocr.Reader(["en"])
             image = cv2.imread(temp_path)
             
-            # Detect plate
             results = model(image)
             
-            # Process detection results
             plate_text = ""
             for box in results[0].boxes.xyxy:
                 x1, y1, x2, y2 = map(int, box)
@@ -239,13 +219,9 @@ def upload_image(request):
                     plate_text = ocr_result[0][1]
                     break
             
-            # Clean plate text
             cleaned_plate_text = re.sub(r"[^A-Z0-9]", "", plate_text.upper())
             
             if cleaned_plate_text:
-                # Determine if this is an entry or exit
-                # If the vehicle exists with an open log, it's an exit
-                # Otherwise, it's an entry
                 try:
                     vehicle = Vehicle.objects.get(license_plate=cleaned_plate_text)
                     open_log = EntryExitLog.objects.filter(vehicle=vehicle, is_open=True).first()
@@ -256,19 +232,15 @@ def upload_image(request):
                 except Vehicle.DoesNotExist:
                     mode = "entry"
                 
-                # Save the image with the plate name
                 timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
                 final_filename = f"{cleaned_plate_text}_{timestamp}.jpg"
                 final_path = os.path.join(entries_dir, final_filename)
                 
-                # If temp file already exists at the destination, remove it
                 if os.path.exists(final_path):
                     os.remove(final_path)
                     
-                # Rename the temp file to the final name
                 shutil.move(temp_path, final_path)
                 
-                # Log the plate via the regular API
                 log_url = f"http://127.0.0.1:8000/parking/log/?plate={cleaned_plate_text}"
                 import requests
                 response = requests.get(log_url)
@@ -282,29 +254,24 @@ def upload_image(request):
                     'image_path': f'/entries/{final_filename}'
                 }
             else:
-                # No plate detected
                 context = {
                     'success': False,
                     'output': "❌ No license plate detected in the image.",
                     'plate_number': None,
                     'mode': None
                 }
-                # Remove the temp file
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
         except Exception as e:
-            # Handle errors
             context = {
                 'success': False,
                 'output': f"❌ Error processing image: {str(e)}",
                 'plate_number': None,
                 'mode': None
             }
-            # Remove the temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
         
         return render(request, 'parking/upload_result.html', context)
     
-    # If GET request or no image uploaded, show the upload form
     return render(request, 'parking/upload_image.html', {})
